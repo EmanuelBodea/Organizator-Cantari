@@ -13,9 +13,11 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = 'Organizator Cantari Betel Padureni'
-APP_VERSION = '11.0.1'
+APP_VERSION = '11.0.2'
 DATA_DIR = Path(os.environ.get('APPDATA', str(Path.home()))) / 'OrganizatorCantari'
 DATA_FILE = DATA_DIR / 'cantari.json'
+BACKUP_DIR = DATA_DIR / 'backup'
+
 
 PALETTES = {
     'dark': {'bg':'#101522','panel':'#182033','panel2':'#222d44','fg':'#eef2ff','muted':'#a7b3ca','accent':'#647dff','accent2':'#394b84','entry':'#28344b','select':'#34476b','danger':'#ed6379'},
@@ -138,11 +140,24 @@ class App(tk.Tk):
         else:
             self.readonly = False
 
+    def automatic_backup(self):
+        """Păstrează maximum 30 de copii, una pe zi, înainte de prima salvare."""
+        if not DATA_FILE.is_file():
+            return
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        target = BACKUP_DIR / ('cantari-' + date.today().isoformat() + '.json')
+        if not target.exists():
+            # Copia de siguranță conține datele anterioare modificării.
+            shutil.copy2(DATA_FILE, target)
+        for old in sorted(BACKUP_DIR.glob('cantari-????-??-??.json'))[:-30]:
+            old.unlink()
+
     def persist(self):
         if self.readonly:
             return
         try:
             DATA_DIR.mkdir(parents=True, exist_ok=True)
+            self.automatic_backup()
             temp = DATA_FILE.with_suffix('.tmp')
             temp.write_text(json.dumps(self.data,ensure_ascii=False,indent=2),encoding='utf-8')
             os.replace(temp,DATA_FILE)
@@ -247,11 +262,15 @@ class App(tk.Tk):
         self.song_tree.column('link',width=115,minwidth=85,stretch=True,anchor='center')
         self.song_tree.grid(row=2,column=0,sticky='nsew')
         self.song_tree.bind('<Double-1>',self.song_double_click)
+        self.song_tree.bind('<ButtonPress-1>',self.song_drag_start,add='+')
+        self.song_tree.bind('<ButtonRelease-1>',self.song_drag_end,add='+')
         # Culorile pentru linkuri sunt aplicate doar in coloana Link, nu pe intregul rand.
         self.link_labels = {}
         self.after(150, self.refresh_link_labels)
         bar=ttk.Frame(p);bar.grid(row=3,column=0,sticky='ew',pady=(12,0))
         ttk.Button(bar,text='Editează',command=self.edit_song).pack(side='left')
+        ttk.Button(bar,text='Copiază în...',command=self.copy_song).pack(side='left',padx=(8,0))
+        ttk.Button(bar,text='Istoric',command=self.song_history).pack(side='left',padx=(8,0))
         ttk.Button(bar,text='Deschide link',command=self.open_song_link).pack(side='left',padx=(8,0))
         ttk.Button(bar,text='Șterge',style='Danger.TButton',command=self.delete_song).pack(side='right')
         self.status_label=tk.Label(self,textvariable=self.status,bg=c['bg'],fg=c['muted'],anchor='w',font=('Segoe UI',9),padx=20,pady=9)
@@ -522,6 +541,124 @@ class App(tk.Tk):
         day=self.days()[self.day_idx]
         if messagebox.askyesno('Confirmă ștergerea',f'Ștergi ziua „{day["name"]}” ({day["date"]}) și toate cântările?',icon='warning',parent=self):
             del self.days()[self.day_idx];self.day_idx=None;self.commit()
+
+    def song_drag_start(self, event):
+        # Mutarea este dezactivată la căutare, pentru a nu schimba ordinea ascunsă.
+        self._song_drag = None
+        if self.query.get().strip() or self.cat_idx is None or self.day_idx is None:
+            return
+        if self.song_tree.identify_region(event.x,event.y) != 'cell':
+            return
+        row = self.song_tree.identify_row(event.y)
+        if row:
+            self._song_drag = (self.cat_idx, self.day_idx, int(row), event.x_root, event.y_root)
+
+    def song_drag_end(self, event):
+        drag = getattr(self, '_song_drag', None)
+        self._song_drag = None
+        if not drag or self.query.get().strip():
+            return
+        cat, day, source, start_x, start_y = drag
+        if cat != self.cat_idx or day != self.day_idx:
+            return
+        if abs(event.y_root - start_y) < 8:
+            return
+        dest_row = self.song_tree.identify_row(event.y)
+        if not dest_row:
+            return
+        target = int(dest_row)
+        songs = self.songs()
+        if source == target or not (0 <= source < len(songs) and 0 <= target < len(songs)):
+            return
+        item = songs.pop(source)
+        songs.insert(target, item)
+        self.commit()
+        self.song_tree.selection_set(str(target))
+        self.song_tree.focus(str(target))
+        self.song_tree.see(str(target))
+        self.status.set('Ordinea cântărilor a fost salvată.')
+
+    def copy_song(self):
+        if not self.get_day():
+            return
+        idx = self.selected_song()
+        if idx is None:
+            return
+        song = copy.deepcopy(self.songs()[idx])
+        destinations = []
+        for ci, category in enumerate(self.data['categories']):
+            for di, day in enumerate(category['days']):
+                if ci == self.cat_idx and di == self.day_idx:
+                    continue
+                label = f"{category['name']} / {day['name']} ({day['date']})"
+                destinations.append((label, ci, di))
+        if not destinations:
+            messagebox.showinfo('Copiere', 'Adaugă mai întâi o altă zi în care să copiezi cântarea.', parent=self)
+            return
+        window = tk.Toplevel(self)
+        window.title('Copiază cântarea în altă zi')
+        window.transient(self)
+        window.geometry('540x360')
+        window.configure(bg=self.colors['panel'])
+        ttk.Label(window, text=f"Copiază: {song['number']} — {song['title']}", wraplength=490).pack(padx=16,pady=(16,8),anchor='w')
+        ttk.Label(window, text='Alege ziua de destinație:').pack(padx=16,anchor='w')
+        listing = tk.Listbox(window, exportselection=False, font=('Segoe UI',10))
+        listing.pack(fill='both',expand=True,padx=16,pady=10)
+        for label, _, _ in destinations:
+            listing.insert('end',label)
+        listing.selection_set(0)
+        def perform():
+            selected = listing.curselection()
+            if not selected:
+                return
+            _, ci, di = destinations[selected[0]]
+            self.data['categories'][ci]['days'][di]['songs'].append(copy.deepcopy(song))
+            self.persist()
+            window.destroy()
+            self.status.set('Cântarea a fost copiată în ziua selectată.')
+            messagebox.showinfo('Copiere reușită','Cântarea a fost copiată. Originalul a rămas neschimbat.',parent=self)
+        ttk.Button(window,text='Copiază cântarea',command=perform,style='Accent.TButton').pack(pady=(0,16))
+        window.grab_set()
+        window.focus_set()
+
+    def song_history(self):
+        if not self.get_day():
+            return
+        idx = self.selected_song()
+        if idx is None:
+            return
+        song = self.songs()[idx]
+        number = song.get('number','').strip().casefold()
+        title = song.get('title','').strip().casefold()
+        matches = []
+        for category in self.data['categories']:
+            for day in category['days']:
+                for entry in day['songs']:
+                    if (number and entry.get('number','').strip().casefold() == number
+                        and entry.get('title','').strip().casefold() == title):
+                        matches.append((day.get('date',''), category['name'], day['name']))
+        def sort_key(entry):
+            try:
+                return datetime.strptime(entry[0], '%d.%m.%Y')
+            except ValueError:
+                return datetime.min
+        matches.sort(key=sort_key, reverse=True)
+        window = tk.Toplevel(self)
+        window.title('Istoricul programărilor')
+        window.transient(self)
+        window.geometry('610x420')
+        window.configure(bg=self.colors['panel'])
+        ttk.Label(window,text=f"Istoric: {song['number']} — {song['title']}",wraplength=560).pack(padx=16,pady=(16,6),anchor='w')
+        ttk.Label(window,text=f"Programată de {len(matches)} ori. Datele arată programările, nu confirmă interpretarea.",wraplength=560).pack(padx=16,pady=(0,8),anchor='w')
+        tree = ttk.Treeview(window,columns=('date','category','day'),show='headings')
+        for key, heading, width in [('date','Data',120),('category','Categorie',190),('day','Zi',180)]:
+            tree.heading(key,text=heading)
+            tree.column(key,width=width,anchor='center')
+        tree.pack(fill='both',expand=True,padx=16,pady=(0,16))
+        for entry in matches:
+            tree.insert('','end',values=entry)
+        window.grab_set()
+        window.focus_set()
 
     def add_song(self):
         if not self.get_day():return
