@@ -4,6 +4,7 @@ import os
 import sys
 import shutil
 import subprocess
+import unicodedata
 import webbrowser
 from urllib.parse import urlparse
 import updater
@@ -13,7 +14,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = 'Organizator Cantari Betel Padureni'
-APP_VERSION = '11.0.2'
+APP_VERSION = '11.0.3'
 DATA_DIR = Path(os.environ.get('APPDATA', str(Path.home()))) / 'OrganizatorCantari'
 DATA_FILE = DATA_DIR / 'cantari.json'
 BACKUP_DIR = DATA_DIR / 'backup'
@@ -23,6 +24,13 @@ PALETTES = {
     'dark': {'bg':'#101522','panel':'#182033','panel2':'#222d44','fg':'#eef2ff','muted':'#a7b3ca','accent':'#647dff','accent2':'#394b84','entry':'#28344b','select':'#34476b','danger':'#ed6379'},
     'light': {'bg':'#f3f6fc','panel':'#ffffff','panel2':'#e8edf8','fg':'#17233c','muted':'#5c6b85','accent':'#445ddd','accent2':'#dce4ff','entry':'#f0f3fb','select':'#dbe5ff','danger':'#c33c54'}
 }
+
+def search_key(value):
+    """Căutare fără diferență între majuscule și diacritice românești."""
+    value = str(value).casefold().translate(str.maketrans({'ș':'s','ş':'s','ț':'t','ţ':'t'}))
+    return ''.join(ch for ch in unicodedata.normalize('NFKD', value)
+                   if not unicodedata.combining(ch))
+
 
 def blank_data():
     return {'version':1,'theme':'dark','categories':[]}
@@ -384,9 +392,9 @@ class App(tk.Tk):
 
     def render_categories(self):
         self.cat_tree.delete(*self.cat_tree.get_children())
-        query=self.cat_query.get().strip().casefold()
+        query=search_key(self.cat_query.get().strip())
         for i,cat in enumerate(self.data['categories']):
-            if query and query not in cat['name'].casefold():
+            if query and query not in search_key(cat['name']):
                 continue
             self.cat_tree.insert('', 'end',iid=str(i),values=(cat['name'],))
         if self.cat_idx is not None and self.cat_tree.exists(str(self.cat_idx)):
@@ -403,9 +411,9 @@ class App(tk.Tk):
     def render_days_filtered(self):
         self.day_tree.delete(*self.day_tree.get_children())
         if self.cat_idx is None:return
-        query=self.day_query.get().strip().casefold()
+        query=search_key(self.day_query.get().strip())
         for i,day in enumerate(self.data['categories'][self.cat_idx]['days']):
-            if query and query not in day['date'].casefold() and query not in day['name'].casefold():
+            if query and query not in search_key(day['date']) and query not in search_key(day['name']):
                 continue
             self.day_tree.insert('','end',iid=str(i),values=(day['name'],day['date']))
         if self.day_idx is not None and self.day_tree.exists(str(self.day_idx)):
@@ -420,9 +428,9 @@ class App(tk.Tk):
         self.search_results=[]
         if self.day_idx is None or self.cat_idx is None:
             self.status.set('Selectează o categorie și o zi pentru a vedea cântările.');return
-        q=self.query.get().casefold().strip()
+        q=search_key(self.query.get().strip())
         for i,song in enumerate(self.songs()):
-            if q and q not in song['title'].casefold():continue
+            if q and q not in search_key(song['title']):continue
             self.song_tree.insert('','end',iid=str(i),values=(song['number'],song['title'],'Deschide' if song.get('link','').strip() else '—'))
             self.search_results.append(str(i))
         self.search_pos=-1
