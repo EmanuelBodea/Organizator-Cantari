@@ -44,7 +44,7 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ github.ref_name }}".TrimStart('v')
-          if ($version -notmatch '^\\d+\\.\\d+\\.\\d+$') { throw "Tagul trebuie sa fie vMAJOR.MINOR.PATCH" }
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Tagul trebuie sa fie vMAJOR.MINOR.PATCH" }
           $exe = "dist/Organizator-Cantari-Betel-Padureni.exe"
           $sha = (Get-FileHash -Path $exe -Algorithm SHA256).Hash.ToLowerInvariant()
           $url = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/Organizator-Cantari-Betel-Padureni.exe"
