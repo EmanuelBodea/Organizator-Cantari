@@ -1,0 +1,60 @@
+name: Construire EXE Windows
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Descarca sursele
+        uses: actions/checkout@v4
+
+      - name: Configureaza Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Instaleaza PyInstaller
+        run: python -m pip install --upgrade pyinstaller
+
+      - name: Verifica sintaxa Python
+        run: python -m py_compile app.py updater.py
+
+      - name: Construieste EXE
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name "Organizator-Cantari-Betel-Padureni" app.py
+
+      - name: Arhiveaza EXE pentru descarcare
+        uses: actions/upload-artifact@v4
+        with:
+          name: Organizator-Cantari-Betel-Padureni-Windows
+          path: |
+            dist/Organizator-Cantari-Betel-Padureni.exe
+            update_config.json
+          if-no-files-found: error
+
+      - name: Genereaza manifestul pentru actualizari
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          if ($version -notmatch '^\\d+\\.\\d+\\.\\d+$') { throw "Tagul trebuie sa fie vMAJOR.MINOR.PATCH" }
+          $exe = "dist/Organizator-Cantari-Betel-Padureni.exe"
+          $sha = (Get-FileHash -Path $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          $url = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/Organizator-Cantari-Betel-Padureni.exe"
+          $manifest = @{ version = $version; notes = "Versiunea $version"; url = $url; sha256 = $sha }
+          $manifest | ConvertTo-Json | Set-Content -Path update.json -Encoding utf8
+
+      - name: Publica GitHub Release pentru tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release create "${{ github.ref_name }}" "dist/Organizator-Cantari-Betel-Padureni.exe" "update.json" "update_config.json" --title "Organizator Cantari ${{ github.ref_name }}" --notes "Versiune Windows. Autor: Bodea Emanuel. Actualizarea se instaleaza numai cu confirmare."
