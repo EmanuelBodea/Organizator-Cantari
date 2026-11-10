@@ -1,0 +1,15 @@
+ORGANIZATOR CANTARI BETEL PADURENI v11.0.0
+Autor Bodea Emanuel
+
+1. Pentru test: dublu click pe Porneste-aplicatia.bat.
+2. Pentru EXE: dublu click pe Construieste-EXE.bat.
+3. In dist vei gasi EXE si update_config.json. Copiaza AMBELE fisiere pe Desktop.
+4. Actualizarile cu confirmare functioneaza dupa publicarea unui GitHub Release:
+   - Publica fiecare versiune noua, incluzand fisierul EXE si update.json.
+   - Pentru SHA-256, in PowerShell: Get-FileHash .\Organizator-Cantari-Betel-Padureni.exe -Algorithm SHA256
+   - Completeaza versiunea, URL-ul si SHA-256 in update.json (vezi exemplu-update.json).
+   - Ataseaza update.json si EXE la Release.
+   - Linkul /releases/latest/download/update.json trebuie sa fie accesibil public.
+
+Actualizarea necesita confirmare si verifica SHA-256.
+Datele raman in %APPDATA%\OrganizatorCantari\cantari.json.
