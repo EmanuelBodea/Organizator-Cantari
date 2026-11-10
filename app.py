@@ -13,7 +13,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = 'Organizator Cantari Betel Padureni'
-APP_VERSION = '11.0.0'
+APP_VERSION = '11.0.1'
 DATA_DIR = Path(os.environ.get('APPDATA', str(Path.home()))) / 'OrganizatorCantari'
 DATA_FILE = DATA_DIR / 'cantari.json'
 
@@ -260,31 +260,40 @@ class App(tk.Tk):
     def check_updates(self, silent=False):
         import threading
         if getattr(self, '_checking_updates', False):
+            if not silent:
+                self._update_manual_requested = True
+                self.status.set('Verific actualizările...')
             return
         self._checking_updates = True
-        if not silent:
-            self.status.set('Verific actualizările...')
+        self._update_manual_requested = not silent
+        self.status.set('Verific actualizările...')
         def task():
             try:
                 result = updater.find_update(APP_VERSION)
-                self.after(0, lambda: self.update_result(result, silent))
+                self.after(0, lambda: self.update_result(result, False))
             except Exception as exc:
-                self.after(0, lambda: self.update_error(str(exc), silent))
+                error = str(exc)
+                self.after(0, lambda: self.update_error(error, False))
         threading.Thread(target=task, daemon=True).start()
 
-    def update_error(self, error, silent):
+    def update_error(self, error, silent=False):
         self._checking_updates = False
-        if not silent:
+        self.status.set('Verificarea actualizărilor nu a reușit.')
+        if getattr(self, '_update_manual_requested', False):
             messagebox.showwarning('Actualizări', error, parent=self)
-            self.status.set('Verificarea actualizărilor nu a reușit.')
+        self._update_manual_requested = False
 
-    def update_result(self, result, silent):
+    def update_result(self, result, silent=False):
         self._checking_updates = False
+        manual = getattr(self, '_update_manual_requested', False)
+        self._update_manual_requested = False
         if result is None:
-            if not silent:
+            self.status.set('Ai deja cea mai recentă versiune.')
+            if manual:
                 messagebox.showinfo('Actualizări', 'Ai deja cea mai recentă versiune.', parent=self)
             return
         version, notes, url, checksum = result
+        self.status.set(f'Actualizare disponibilă: v{version}')
         if not messagebox.askyesno('Actualizare disponibilă',
             f'Versiune instalată: {APP_VERSION}\nVersiune nouă: {version}\n\nNoutăți:\n{notes[:700]}\n\nDescarci și instalezi actualizarea?', parent=self):
             return
@@ -295,19 +304,26 @@ class App(tk.Tk):
                 staged = updater.download_verified(url, checksum)
                 self.after(0, lambda: self.install_update(staged))
             except Exception as exc:
-                self.after(0, lambda: messagebox.showerror('Actualizare eșuată', str(exc), parent=self))
+                error = str(exc)
+                self.after(0, lambda: self.download_update_error(error))
         threading.Thread(target=task, daemon=True).start()
+
+    def download_update_error(self, error):
+        self.status.set('Descărcarea actualizării a eșuat.')
+        messagebox.showerror('Actualizare eșuată', error, parent=self)
 
     def install_update(self, staged):
         if not messagebox.askyesno('Instalează actualizarea',
             'Descărcarea s-a încheiat și fișierul a fost verificat.\n\nAplicația se va închide pentru a înlocui executabilul. Continui?', parent=self):
             try: staged.unlink(missing_ok=True)
             except OSError: pass
+            self.status.set('Instalarea actualizării a fost anulată.')
             return
         try:
             updater.launch_installer(staged)
         except Exception as exc:
             messagebox.showerror('Actualizare eșuată', str(exc), parent=self)
+            self.status.set('Instalarea actualizării a eșuat.')
             return
         self.destroy()
 
