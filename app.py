@@ -14,7 +14,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = 'Organizator Cantari Betel Padureni'
-APP_VERSION = '11.0.4'
+APP_VERSION = '11.0.3'
 DATA_DIR = Path(os.environ.get('APPDATA', str(Path.home()))) / 'OrganizatorCantari'
 DATA_FILE = DATA_DIR / 'cantari.json'
 BACKUP_DIR = DATA_DIR / 'backup'
@@ -52,7 +52,7 @@ def normalize(raw):
         for day in cat.get('days', []):
             if not isinstance(day, dict):
                 continue
-            entry = {'name':str(day.get('name','Zi')),'date':str(day.get('date','')),'program':str(day.get('program','Program principal')),'songs':[]}
+            entry = {'name':str(day.get('name','Zi')),'date':str(day.get('date','')),'songs':[]}
             for song in day.get('songs', []):
                 if isinstance(song, dict):
                     entry['songs'].append({'title':str(song.get('title','')),'number':str(song.get('number','')),'link':str(song.get('link',''))})
@@ -246,10 +246,9 @@ class App(tk.Tk):
         self.day_search_entry.grid(row=0,column=1,sticky='ew')
         self.day_search_entry.insert(0,'')
         self.day_query.trace_add('write',lambda *_:self.render_days_filtered())
-        self.day_tree=self.tree(p,('name','date','program'),('Zi','Dată','Program'))
+        self.day_tree=self.tree(p,('name','date'),('Zi','Dată'))
         self.day_tree.column('name',width=135,minwidth=75,stretch=True,anchor='center')
-        self.day_tree.column('date',width=100,minwidth=85,stretch=True,anchor='center')
-        self.day_tree.column('program',width=155,minwidth=100,stretch=True,anchor='center')
+        self.day_tree.column('date',width=125,minwidth=85,stretch=True,anchor='center')
         self.day_tree.grid(row=2,column=0,sticky='nsew')
         self.day_tree.bind('<<TreeviewSelect>>',self.select_day)
         self.day_tree.bind('<Double-1>',self.edit_day)
@@ -414,9 +413,9 @@ class App(tk.Tk):
         if self.cat_idx is None:return
         query=search_key(self.day_query.get().strip())
         for i,day in enumerate(self.data['categories'][self.cat_idx]['days']):
-            if query and query not in search_key(day['date']) and query not in search_key(day['name']) and query not in search_key(day.get('program','Program principal')):
+            if query and query not in search_key(day['date']) and query not in search_key(day['name']):
                 continue
-            self.day_tree.insert('','end',iid=str(i),values=(day['name'],day['date'],day.get('program','Program principal')))
+            self.day_tree.insert('','end',iid=str(i),values=(day['name'],day['date']))
         if self.day_idx is not None and self.day_tree.exists(str(self.day_idx)):
             self.day_tree.selection_set(str(self.day_idx))
         else:
@@ -533,9 +532,9 @@ class App(tk.Tk):
 
     def add_day(self):
         if not self.get_cat():return
-        result=self.dialog('Zi nouă',[('name','Numele zilei'),('date','Data (ZZ.LL.AAAA)'),('program','Numele programului (ex. Dimineață, Seară)')],{'name':self.day_name(),'date':date.today().strftime('%d.%m.%Y'),'program':'Program principal'})
+        result=self.dialog('Zi nouă',[('name','Numele zilei'),('date','Data (ZZ.LL.AAAA)')],{'name':self.day_name(),'date':date.today().strftime('%d.%m.%Y')})
         if result:
-            self.days().append({'name':result['name'],'date':result['date'],'program':result['program'],'songs':[]})
+            self.days().append({'name':result['name'],'date':result['date'],'songs':[]})
             self.day_idx=len(self.days())-1;self.commit()
     def day_name(self):
         names={0:'Luni',1:'Marți',2:'Miercuri',3:'Joi',4:'Vineri',5:'Sâmbătă',6:'Duminică'}
@@ -543,12 +542,12 @@ class App(tk.Tk):
     def edit_day(self,event=None):
         if not self.get_day():return
         day=self.days()[self.day_idx]
-        result=self.dialog('Editează ziua',[('name','Numele zilei'),('date','Data (ZZ.LL.AAAA)'),('program','Numele programului')],{'name':day['name'],'date':day['date'],'program':day.get('program','Program principal')})
+        result=self.dialog('Editează ziua',[('name','Numele zilei'),('date','Data (ZZ.LL.AAAA)')],day)
         if result:day.update(result);self.commit()
     def delete_day(self):
         if not self.get_day():return
         day=self.days()[self.day_idx]
-        if messagebox.askyesno('Confirmă ștergerea',f'Ștergi programul „{day.get("program", "Program principal")}” din {day["name"]} ({day["date"]}) și toate cântările sale?',icon='warning',parent=self):
+        if messagebox.askyesno('Confirmă ștergerea',f'Ștergi ziua „{day["name"]}” ({day["date"]}) și toate cântările?',icon='warning',parent=self):
             del self.days()[self.day_idx];self.day_idx=None;self.commit()
 
     def song_drag_start(self, event):
@@ -599,7 +598,7 @@ class App(tk.Tk):
             for di, day in enumerate(category['days']):
                 if ci == self.cat_idx and di == self.day_idx:
                     continue
-                label = f"{category['name']} / {day['name']} ({day['date']}) / {day.get('program','Program principal')}"
+                label = f"{category['name']} / {day['name']} ({day['date']})"
                 destinations.append((label, ci, di))
         if not destinations:
             messagebox.showinfo('Copiere', 'Adaugă mai întâi o altă zi în care să copiezi cântarea.', parent=self)
@@ -645,7 +644,7 @@ class App(tk.Tk):
                 for entry in day['songs']:
                     if (number and entry.get('number','').strip().casefold() == number
                         and entry.get('title','').strip().casefold() == title):
-                        matches.append((day.get('date',''), category['name'], f"{day['name']} / {day.get('program','Program principal')}"))
+                        matches.append((day.get('date',''), category['name'], day['name']))
         def sort_key(entry):
             try:
                 return datetime.strptime(entry[0], '%d.%m.%Y')
