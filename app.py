@@ -14,7 +14,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = 'Organizator Cantari Betel Padureni'
-APP_VERSION = '11.0.5'
+APP_VERSION = '11.0.5.1'
 DATA_DIR = Path(os.environ.get('APPDATA', str(Path.home()))) / 'OrganizatorCantari'
 DATA_FILE = DATA_DIR / 'cantari.json'
 BACKUP_DIR = DATA_DIR / 'backup'
@@ -358,7 +358,7 @@ class App(tk.Tk):
         title_area=tk.Frame(header,bg=c['bg'])
         title_area.pack(side='left')
         tk.Label(title_area,text=APP_NAME,bg=c['bg'],fg=c['fg'],font=('Segoe UI Semibold',21),anchor='w').pack(anchor='w')
-        tk.Label(title_area,text='Autor Bodea Emanuel',bg=c['bg'],fg=c['muted'],font=('Segoe UI',10),anchor='w').pack(anchor='w',pady=(2,0))
+        tk.Label(title_area,text=f'Autor Bodea Emanuel | Versiunea {APP_VERSION}',bg=c['bg'],fg=c['muted'],font=('Segoe UI',10),anchor='w').pack(anchor='w',pady=(2,0))
         ttk.Button(header,text='Verifică actualizări',command=self.check_updates).pack(side='right',padx=(8,0))
         ttk.Button(header,text='☼  Schimbă tema',command=self.toggle_theme).pack(side='right',padx=(8,0))
         ttk.Button(header,text='Import JSON',command=self.import_json).pack(side='right',padx=(8,0))
