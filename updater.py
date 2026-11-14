@@ -18,7 +18,7 @@ def _urlopen(url, timeout=12):
     return urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent':'Betel-Padureni-Updater/1'}), timeout=timeout)
 
 def _version(value):
-    if not re.fullmatch(r'\d+\.\d+\.\d+', value):
+    if not re.fullmatch(r'\d+\.\d+\.\d+(?:\.\d+)?', value):
         raise ValueError('Versiune invalidă în manifest.')
     return tuple(int(x) for x in value.split('.'))
 
