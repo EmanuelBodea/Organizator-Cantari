@@ -14,10 +14,12 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = 'Organizator Cantari Betel Padureni'
-APP_VERSION = '11.0.4'
+APP_VERSION = '11.0.5'
 DATA_DIR = Path(os.environ.get('APPDATA', str(Path.home()))) / 'OrganizatorCantari'
 DATA_FILE = DATA_DIR / 'cantari.json'
 BACKUP_DIR = DATA_DIR / 'backup'
+PROGRAMS_FILE = DATA_DIR / 'programe.json'
+DEFAULT_PROGRAMS = ['Dimineață', 'Seară', 'Tineri']
 
 
 PALETTES = {
@@ -60,6 +62,105 @@ def normalize(raw):
         result['categories'].append(category)
     return result
 
+def get_programs():
+    try:
+        saved = json.loads(PROGRAMS_FILE.read_text(encoding='utf-8'))
+        if isinstance(saved, list):
+            return list(dict.fromkeys(str(x).strip() for x in saved if str(x).strip()))
+    except (OSError, ValueError):
+        pass
+    return DEFAULT_PROGRAMS.copy()
+
+
+def add_program_name(name):
+    name = name.strip()
+    if not name:
+        return False
+    programs = get_programs()
+    if name.casefold() in [p.casefold() for p in programs]:
+        return False
+    programs.append(name)
+    PROGRAMS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    PROGRAMS_FILE.write_text(json.dumps(programs, ensure_ascii=False, indent=2), encoding='utf-8')
+    return True
+
+
+def remove_program_name(name):
+    programs = [p for p in get_programs() if p.casefold() != name.casefold()]
+    PROGRAMS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    PROGRAMS_FILE.write_text(json.dumps(programs, ensure_ascii=False, indent=2), encoding='utf-8')
+    return programs
+
+
+class DarkProgramSelector(tk.Frame):
+    def __init__(self, parent, options, selected, colors):
+        super().__init__(parent, bg=colors['entry'], highlightthickness=1,
+                         highlightbackground=colors['muted'])
+        self.colors = colors
+        self.options = list(options)
+        self.value = tk.StringVar(value=selected)
+        self.entry = tk.Entry(self, textvariable=self.value, state='readonly',
+                              readonlybackground=colors['entry'], fg=colors['fg'],
+                              relief='flat', bd=0, font=('Segoe UI', 10), cursor='hand2')
+        self.entry.pack(side='left', fill='x', expand=True, padx=(9,0), ipady=7)
+        self.arrow = tk.Label(self, text='▼', bg=colors['entry'], fg=colors['fg'],
+                              font=('Segoe UI', 9), width=3, cursor='hand2')
+        self.arrow.pack(side='right', fill='y')
+        self.entry.bind('<Button-1>', self.open_menu)
+        self.arrow.bind('<Button-1>', self.open_menu)
+        self.menu = None
+
+    def get(self):
+        return self.value.get()
+
+    def set(self, value):
+        self.value.set(value)
+
+    def __setitem__(self, key, value):
+        if key == 'values':
+            self.options = list(value)
+        else:
+            super().__setitem__(key, value)
+
+    def open_menu(self, event=None):
+        if self.menu is not None and self.menu.winfo_exists():
+            self.menu.destroy()
+            self.menu = None
+            return
+        popup = tk.Toplevel(self)
+        self.menu = popup
+        popup.overrideredirect(True)
+        popup.configure(bg=self.colors['accent'])
+        listing = tk.Listbox(popup, font=('Segoe UI', 10), activestyle='none',
+                             bg=self.colors['panel2'], fg=self.colors['fg'],
+                             selectbackground=self.colors['select'],
+                             selectforeground=self.colors['fg'],
+                             highlightthickness=0, relief='flat', bd=0,
+                             exportselection=False, height=min(max(len(self.options),1),8))
+        listing.pack(fill='both', expand=True, padx=1, pady=1)
+        for item in self.options:
+            listing.insert('end', item)
+        popup.geometry(f'{max(self.winfo_width(),180)}x{min(max(len(self.options),1),8)*25+2}+{self.winfo_rootx()}+{self.winfo_rooty()+self.winfo_height()}')
+        for idx, item in enumerate(self.options):
+            if item == self.get():
+                listing.selection_set(idx)
+                listing.see(idx)
+                break
+        def close():
+            popup.destroy()
+            self.menu = None
+        def choose(event=None):
+            selection = listing.curselection()
+            if selection:
+                self.set(self.options[selection[0]])
+            close()
+        listing.bind('<ButtonRelease-1>', choose)
+        listing.bind('<Return>', choose)
+        listing.bind('<Escape>', lambda e: close())
+        popup.bind('<FocusOut>', lambda e: close() if popup.winfo_exists() else None)
+        listing.focus_set()
+
+
 class Dialog(tk.Toplevel):
     def __init__(self, parent, title, fields, values=None, optional_keys=()):
         super().__init__(parent)
@@ -76,9 +177,22 @@ class Dialog(tk.Toplevel):
         frame.grid(sticky='nsew')
         for i, (key, label) in enumerate(fields):
             ttk.Label(frame, text=label).grid(row=i*2, column=0, sticky='w', pady=(0,5))
-            ent = ttk.Entry(frame, width=43)
-            ent.grid(row=i*2+1, column=0, sticky='ew', pady=(0,13))
-            ent.insert(0, str(values.get(key,'')))
+            if key == 'program':
+                program_row = ttk.Frame(frame)
+                program_row.grid(row=i*2+1, column=0, sticky='ew', pady=(0,13))
+                program_row.columnconfigure(0, weight=1)
+                current = str(values.get(key, 'Dimineață'))
+                options = get_programs()
+                if current and current not in options:
+                    options.insert(0, current)
+                ent = DarkProgramSelector(program_row, options, current if current else 'Dimineață', parent.colors)
+                ent.grid(row=0, column=0, sticky='ew')
+                ttk.Button(program_row, text='+ Alt program', command=lambda e=ent: self.add_program(e)).grid(row=0, column=1, padx=(8,0))
+                ttk.Button(program_row, text='Șterge program', command=lambda e=ent: self.delete_program(e)).grid(row=0, column=2, padx=(8,0))
+            else:
+                ent = ttk.Entry(frame, width=43)
+                ent.grid(row=i*2+1, column=0, sticky='ew', pady=(0,13))
+                ent.insert(0, str(values.get(key,'')))
             self.inputs[key] = ent
         buttons = ttk.Frame(frame)
         buttons.grid(row=len(fields)*2, column=0, sticky='e')
@@ -94,6 +208,49 @@ class Dialog(tk.Toplevel):
         self.grab_set()
         next(iter(self.inputs.values())).focus_set()
         self.wait_window()
+
+    def delete_program(self, combo):
+        name = combo.get().strip()
+        if not name:
+            messagebox.showinfo('Program', 'Selectează un program din listă.', parent=self)
+            return
+        if not messagebox.askyesno('Șterge program',
+                f'Elimini „{name}” din lista de programe disponibile?\\n\\nCântările și programele deja create NU vor fi șterse.',
+                icon='warning', parent=self):
+            return
+        remaining = remove_program_name(name)
+        combo['values'] = remaining
+        combo.set(remaining[0] if remaining else '')
+        messagebox.showinfo('Program eliminat',
+            'Programul a fost eliminat din listă. Programele deja create au rămas neschimbate.', parent=self)
+
+    def add_program(self, combo):
+        popup = tk.Toplevel(self)
+        popup.title('Adaugă program')
+        popup.transient(self)
+        popup.resizable(False, False)
+        popup.configure(bg=self.master.colors['panel'])
+        wrap = ttk.Frame(popup, padding=18)
+        wrap.pack(fill='both', expand=True)
+        ttk.Label(wrap, text='Numele programului nou:').pack(anchor='w', pady=(0,7))
+        entry = ttk.Entry(wrap, width=34)
+        entry.pack(fill='x', pady=(0,12))
+        def confirm(event=None):
+            name = entry.get().strip()
+            if not name:
+                messagebox.showwarning('Nume lipsă', 'Scrie numele programului.', parent=popup)
+                return
+            if not add_program_name(name):
+                messagebox.showinfo('Program existent', 'Programul există deja.', parent=popup)
+            combo['values'] = get_programs()
+            combo.set(next((x for x in get_programs() if x.casefold() == name.casefold()), name))
+            popup.destroy()
+        ttk.Button(wrap, text='Adaugă', style='Accent.TButton', command=confirm).pack(side='right')
+        popup.bind('<Return>', confirm)
+        popup.bind('<Escape>', lambda e: popup.destroy())
+        popup.grab_set()
+        entry.focus_set()
+        popup.wait_window()
 
     def save(self):
         values = {k:widget.get().strip() for k,widget in self.inputs.items()}
@@ -532,7 +689,7 @@ class App(tk.Tk):
 
     def add_day(self):
         if not self.get_cat():return
-        result=self.dialog('Zi nouă',[('name','Numele zilei'),('date','Data (ZZ.LL.AAAA)'),('program','Numele programului (ex. Dimineață, Seară)')],{'name':self.day_name(),'date':date.today().strftime('%d.%m.%Y'),'program':'Program principal'})
+        result=self.dialog('Zi nouă',[('name','Numele zilei'),('date','Data (ZZ.LL.AAAA)'),('program','Programul')],{'name':self.day_name(),'date':date.today().strftime('%d.%m.%Y'),'program':'Dimineață'})
         if result:
             self.days().append({'name':result['name'],'date':result['date'],'program':result['program'],'songs':[]})
             self.day_idx=len(self.days())-1;self.commit()
