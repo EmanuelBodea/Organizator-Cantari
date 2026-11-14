@@ -51,10 +51,10 @@ jobs:
         shell: pwsh
         run: |
           $source = Get-Content -Path app.py -Raw
-          if ($source -notmatch "APP_VERSION\s*=\s*.(\d+\.\d+\.\d+).") { throw "Nu am gasit APP_VERSION in app.py" }
+          if ($source -notmatch "APP_VERSION\s*=\s*.(\d+\.\d+\.\d+(?:\.\d+)?).") { throw "Nu am gasit APP_VERSION in app.py" }
           $version = $Matches[1]
           $tag = "v$version"
-          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Tagul trebuie sa fie vMAJOR.MINOR.PATCH' }
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Tagul trebuie sa fie vMAJOR.MINOR.PATCH[.BUILD]' }
           if ("${{ github.ref }}" -ne "refs/heads/main" -and "${{ github.ref_name }}" -ne $tag) { throw "Tagul nu corespunde versiunii din app.py" }
           $exe = "dist/Organizator-Cantari-Betel-Padureni.exe"
           $sha = (Get-FileHash -Path $exe -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -69,7 +69,7 @@ jobs:
         shell: pwsh
         run: |
           $source = Get-Content -Path app.py -Raw
-          if ($source -notmatch "APP_VERSION\s*=\s*.(\d+\.\d+\.\d+).") { throw "Nu am gasit APP_VERSION in app.py" }
+          if ($source -notmatch "APP_VERSION\s*=\s*.(\d+\.\d+\.\d+(?:\.\d+)?).") { throw "Nu am gasit APP_VERSION in app.py" }
           $tag = "v$($Matches[1])"
           $files = @("dist/Organizator-Cantari-Betel-Padureni.exe", "update.json", "update_config.json")
           gh release view "$tag" 2>$null | Out-Null
